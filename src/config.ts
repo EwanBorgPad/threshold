@@ -6,11 +6,6 @@ dotenv.config();
 
 // Debug: Log environment variables (without exposing secrets)
 if (process.env.NODE_ENV !== "production") {
-  console.log("Environment check:");
-  console.log("TELEGRAM_BOT_TOKEN:", process.env.TELEGRAM_BOT_TOKEN ? "✓ Set" : "✗ Missing");
-  console.log("TELEGRAM_CHAT_ID:", process.env.TELEGRAM_CHAT_ID ? "✓ Set" : "✗ Missing");
-  console.log("PROPOSAL_PUBKEY:", process.env.PROPOSAL_PUBKEY || "Using default");
-  console.log("SOLANA_RPC_URL:", process.env.SOLANA_RPC_URL || "Using default");
 }
 
 export const config = {
@@ -43,11 +38,6 @@ export function validateConfig(): void {
     SOLANA_RPC_URL: process.env.SOLANA_RPC_URL,
   };
 
-  console.log("Environment variables check:");
-  console.log("- TELEGRAM_BOT_TOKEN:", envVars.TELEGRAM_BOT_TOKEN ? `Set (${envVars.TELEGRAM_BOT_TOKEN.length} chars)` : "❌ MISSING");
-  console.log("- TELEGRAM_CHAT_ID:", envVars.TELEGRAM_CHAT_ID ? `Set (${envVars.TELEGRAM_CHAT_ID})` : "❌ MISSING");
-  console.log("- PROPOSAL_PUBKEY:", envVars.PROPOSAL_PUBKEY || "Using default");
-  console.log("- SOLANA_RPC_URL:", envVars.SOLANA_RPC_URL || "Using default");
 
   if (!config.telegram.botToken) {
     console.error("❌ TELEGRAM_BOT_TOKEN is missing from process.env");

@@ -81,7 +81,6 @@ async function fetchFromGraphQL(): Promise<ProposalData | null> {
       });
 
       if (!response.ok) {
-        console.log(`GraphQL endpoint ${endpoint} returned ${response.status}`);
         continue;
       }
 
@@ -96,8 +95,6 @@ async function fetchFromGraphQL(): Promise<ProposalData | null> {
         const threshold =
           failPrice > 0 ? ((passPrice - failPrice) / failPrice) * 100 : 0;
 
-        console.log(`GraphQL API - Status: ${proposal.status}, Pass: $${passPrice}, Fail: $${failPrice}, Threshold: ${threshold.toFixed(4)}%`);
-
         return {
           proposalPubkey: proposal.proposal_acct,
           passPrice,
@@ -110,10 +107,8 @@ async function fetchFromGraphQL(): Promise<ProposalData | null> {
         };
       } else if (data.data?.proposals?.[0]) {
         // Got proposal but no details - log what we have
-        console.log(`GraphQL API - Found proposal with status: ${data.data.proposals[0].status}, but no price details`);
       }
     } catch (error) {
-      console.log(`GraphQL endpoint ${endpoint} failed:`, error);
     }
   }
 
@@ -165,7 +160,6 @@ function parseProposalAccount(data: Buffer): ParsedProposal | null {
 
     const minSize = 8 + 4 + 32 + 8 + 1 + 32 + 32 + 32 + 1 + 32 + 4 + 32 + 32 + 32 + 32 + 32 + 1;
     if (data.length < minSize) {
-      console.log(`Account data too short: ${data.length} < ${minSize}`);
       return null;
     }
 
@@ -237,7 +231,6 @@ function parseProposalAccount(data: Buffer): ParsedProposal | null {
       isTeamSponsored,
     };
   } catch (error) {
-    console.log("Failed to parse proposal account:", error);
     return null;
   }
 }
@@ -266,7 +259,6 @@ function parseQuestionAccount(data: Buffer): { passAmm: PublicKey; failAmm: Publ
 
     return { passAmm, failAmm };
   } catch (error) {
-    console.log("Failed to parse question account:", error);
     return null;
   }
 }
@@ -278,7 +270,6 @@ function parseAmmAccount(data: Buffer): { baseReserves: bigint; quoteReserves: b
     // Let's try multiple offsets to find the reserves
 
     if (data.length < 100) {
-      console.log("AMM data too short:", data.length);
       return null;
     }
 
@@ -304,7 +295,6 @@ function parseAmmAccount(data: Buffer): { baseReserves: bigint; quoteReserves: b
 
     return null;
   } catch (error) {
-    console.log("Failed to parse AMM account:", error);
     return null;
   }
 }
@@ -314,47 +304,29 @@ async function fetchFromSolanaRpc(): Promise<ProposalData | null> {
     const connection = new Connection(config.solana.rpcUrl, "confirmed");
     const proposalPubkey = new PublicKey(config.proposal.pubkey);
 
-    console.log("Fetching proposal account from Solana...");
     const accountInfo = await connection.getAccountInfo(proposalPubkey);
 
     if (!accountInfo) {
-      console.log("Proposal account not found on-chain");
       return null;
     }
 
-    console.log(`Account data length: ${accountInfo.data.length}, Owner: ${accountInfo.owner.toBase58()}`);
-
     const proposal = parseProposalAccount(accountInfo.data);
     if (!proposal) {
-      console.log("Failed to parse proposal account");
       return null;
     }
 
     const stateStr = PROPOSAL_STATE[proposal.state as keyof typeof PROPOSAL_STATE] || "Unknown";
-    console.log(`Proposal #${proposal.number} - State: ${stateStr}`);
-    console.log(`DAO: ${proposal.dao.toBase58()}`);
-    console.log(`Question: ${proposal.question.toBase58()}`);
-
-    // Check if proposal is already finalized
-    if (proposal.state !== 0) { // 0 = Pending
-      console.log(`\n⚠️ Proposal is ${stateStr} - markets may be closed`);
-    }
 
     // Fetch question account to get AMM addresses
     const questionInfo = await connection.getAccountInfo(proposal.question);
     if (!questionInfo) {
-      console.log("Question account not found");
       return null;
     }
 
     const ammAddresses = parseQuestionAccount(questionInfo.data);
     if (!ammAddresses) {
-      console.log("Failed to parse question account for AMM addresses");
       return null;
     }
-
-    console.log(`Pass AMM: ${ammAddresses.passAmm.toBase58()}`);
-    console.log(`Fail AMM: ${ammAddresses.failAmm.toBase58()}`);
 
     // Fetch AMM accounts in parallel
     const [passAmmInfo, failAmmInfo] = await Promise.all([
@@ -365,14 +337,8 @@ async function fetchFromSolanaRpc(): Promise<ProposalData | null> {
     // Check if AMM accounts exist (they're closed when proposal finalizes)
     if (!passAmmInfo || !failAmmInfo) {
       if (proposal.state !== 0) {
-        console.log(`\nAMM accounts are closed (on-chain state shows: ${stateStr})`);
-        console.log("⚠️  Note: On-chain state may not reflect actual proposal status.");
-        console.log("   Trying to fetch current data from MetaDAO API...");
-        // Don't return here - let it fall through to try GraphQL API
-        // The GraphQL API might have more accurate/current status
         return null;
       }
-      console.log("AMM accounts not found");
       return null;
     }
 
@@ -381,7 +347,6 @@ async function fetchFromSolanaRpc(): Promise<ProposalData | null> {
     const failReserves = parseAmmAccount(failAmmInfo.data);
 
     if (!passReserves || !failReserves) {
-      console.log("Failed to parse AMM reserves");
       return null;
     }
 
@@ -390,9 +355,6 @@ async function fetchFromSolanaRpc(): Promise<ProposalData | null> {
     // Both tokens typically have 6 decimals (USDC quote, conditional token base)
     const passPrice = Number(passReserves.quoteReserves) / Number(passReserves.baseReserves);
     const failPrice = Number(failReserves.quoteReserves) / Number(failReserves.baseReserves);
-
-    console.log(`Pass price: $${passPrice.toFixed(6)} (reserves: ${passReserves.baseReserves}/${passReserves.quoteReserves})`);
-    console.log(`Fail price: $${failPrice.toFixed(6)} (reserves: ${failReserves.baseReserves}/${failReserves.quoteReserves})`);
 
     if (passPrice > 0 && failPrice > 0) {
       const threshold = ((passPrice - failPrice) / failPrice) * 100;
@@ -409,10 +371,8 @@ async function fetchFromSolanaRpc(): Promise<ProposalData | null> {
       };
     }
 
-    console.log("Could not calculate prices from reserves");
     return null;
   } catch (error) {
-    console.log("Solana RPC fetch failed:", error);
     return null;
   }
 }
@@ -426,17 +386,14 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
       // @ts-ignore - Puppeteer is an optional dependency
       puppeteer = await import('puppeteer');
     } catch (e) {
-      console.log(`[Puppeteer] ⚠️  Puppeteer not installed. Install with: npm install puppeteer`);
       return null;
     }
     
     if (!puppeteer || !puppeteer.default) {
-      console.log(`[Puppeteer] ⚠️  Puppeteer not available`);
       return null;
     }
 
     const url = `https://www.metadao.fi/projects/${config.proposal.projectSlug}/proposal/${config.proposal.pubkey}`;
-    console.log(`\n[Puppeteer] Launching browser to fetch: ${url}`);
     
     let browser;
     try {
@@ -450,7 +407,6 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
         ],
       });
     } catch (error) {
-      console.log(`[Puppeteer] ❌ Failed to launch browser:`, error);
       return null;
     }
     
@@ -470,8 +426,6 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
         });
       });
       
-      console.log(`[Puppeteer] Navigating to page...`);
-      
       // Navigate and handle Vercel challenge
       try {
         const response = await page.goto(url, { 
@@ -480,71 +434,46 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
         });
         
         if (!response) {
-          console.log(`[Puppeteer] ⚠️  No response received`);
           return null;
         }
-        
-        console.log(`[Puppeteer] Response status: ${response.status()}`);
         
         // Check if we hit a Vercel challenge page
         const pageTitle = await page.title();
         const pageUrl = page.url();
         
         if (pageTitle.includes('Vercel Security Checkpoint') || pageUrl.includes('challenge')) {
-          console.log(`[Puppeteer] ⚠️  Detected Vercel challenge page, waiting for it to complete...`);
-          
           // Wait for the challenge to complete (up to 30 seconds)
           try {
             await page.waitForNavigation({ 
               waitUntil: 'networkidle2', 
               timeout: 30000 
             });
-            console.log(`[Puppeteer] ✓ Challenge completed, page loaded`);
           } catch (e) {
-            console.log(`[Puppeteer] ⚠️  Challenge may still be processing or timed out`);
+            // Challenge may still be processing
           }
         }
         
         // Wait for the actual content to load
-        console.log(`[Puppeteer] Waiting for content to load...`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds for JS to execute
+        await new Promise(resolve => setTimeout(resolve, 5000));
         
         // Check if we're still on a challenge page
         const currentTitle = await page.title();
         if (currentTitle.includes('Vercel Security Checkpoint')) {
-          console.log(`[Puppeteer] ❌ Still on challenge page after waiting`);
           return null;
         }
         
       } catch (error) {
-        console.log(`[Puppeteer] ❌ Navigation error:`, error);
         return null;
       }
       
       // Verify we're on the right page
       const finalUrl = page.url();
-      console.log(`[Puppeteer] Current URL: ${finalUrl}`);
-      
       if (!finalUrl.includes('metadao.fi') || finalUrl.includes('challenge')) {
-        console.log(`[Puppeteer] ⚠️  Not on the expected page, might be blocked`);
+        return null;
       }
-      
-      // Get full page content for debugging
-      console.log(`[Puppeteer] ========== FULL PAGE CONTENT ==========`);
-      const fullHTML = await page.content();
-      console.log(`[Puppeteer] HTML length: ${fullHTML.length} bytes`);
-      console.log(`[Puppeteer] First 2000 chars of HTML:`, fullHTML.substring(0, 2000));
-      console.log(`[Puppeteer] =======================================`);
       
       // Get page text
       const pageText = await page.evaluate(() => document.body.innerText) as string;
-      console.log(`[Puppeteer] ========== PAGE TEXT ==========`);
-      console.log(`[Puppeteer] Text length: ${pageText.length} chars`);
-      console.log(`[Puppeteer] Full page text:\n${pageText}`);
-      console.log(`[Puppeteer] =================================`);
-      
-      // Try to extract threshold from the page
-      console.log(`[Puppeteer] Extracting data from page...`);
       
       // Method 1: Try to get data from __NEXT_DATA__
       const nextData = await page.evaluate(() => {
@@ -560,11 +489,6 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
       });
       
       if (nextData) {
-        console.log(`[Puppeteer] ✓ Found __NEXT_DATA__ (${JSON.stringify(nextData).length} bytes)`);
-        console.log(`[Puppeteer] ========== __NEXT_DATA__ CONTENT ==========`);
-        console.log(`[Puppeteer] Full __NEXT_DATA__:`, JSON.stringify(nextData, null, 2));
-        console.log(`[Puppeteer] ============================================`);
-        
         // Recursively search for proposal data
         const findInObject = (obj: any, key: string): any => {
           if (obj && typeof obj === 'object') {
@@ -587,7 +511,6 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
           const failPrice = proposalData.fail_price ?? proposalData.failPrice ?? null;
           
           if (threshold !== null) {
-            console.log(`[Puppeteer] ✅ Found threshold in __NEXT_DATA__: ${threshold}%`);
             return {
               proposalPubkey: config.proposal.pubkey,
               passPrice: passPrice || 0,
@@ -603,48 +526,9 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
       }
       
       // Method 2: Try to extract from visible text
-      console.log(`[Puppeteer] Trying to extract from visible text...`);
-      
       // Look for percentage patterns
       const percentagePattern = /([+-]?\d+\.\d{2,})\s*%/g;
       const percentages: RegExpMatchArray[] = Array.from(pageText.matchAll(percentagePattern));
-      
-      console.log(`[Puppeteer] ========== ALL PERCENTAGE VALUES FOUND ==========`);
-      console.log(`[Puppeteer] Found ${percentages.length} percentage values:`);
-      percentages.forEach((match, index) => {
-        const value = parseFloat(match[1] as string);
-        const matchIndex = match.index as number;
-        const matchLength = match[0].length;
-        const context = pageText.substring(
-          Math.max(0, matchIndex - 150),
-          Math.min(pageText.length, matchIndex + matchLength + 150)
-        );
-        console.log(`[Puppeteer] ${index + 1}. Value: ${value}%, Context: "${context}"`);
-      });
-      console.log(`[Puppeteer] =================================================`);
-      
-      // Also look for threshold-related elements in the DOM
-      console.log(`[Puppeteer] ========== SEARCHING DOM FOR THRESHOLD ==========`);
-      const thresholdElements = await page.evaluate(() => {
-        const results: any[] = [];
-        // Search for elements containing "threshold"
-        const allElements = document.querySelectorAll('*');
-        allElements.forEach((el) => {
-          const text = el.textContent || '';
-          if (text.toLowerCase().includes('threshold') || 
-              text.toLowerCase().includes('pass') && text.toLowerCase().includes('fail')) {
-            results.push({
-              tag: el.tagName,
-              text: text.substring(0, 200),
-              className: el.className,
-              id: el.id,
-            });
-          }
-        });
-        return results.slice(0, 20); // Limit to first 20 matches
-      });
-      console.log(`[Puppeteer] Found ${thresholdElements.length} threshold-related elements:`, thresholdElements);
-      console.log(`[Puppeteer] =================================================`);
       
       // Extract pass and fail prices from TWAP values
       let passPrice: number | null = null;
@@ -658,14 +542,12 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
       
       if (approveTwapMatch) {
         passTwap = parseFloat(approveTwapMatch[1]);
-        passPrice = passTwap; // Use TWAP as price
-        console.log(`[Puppeteer] ✓ Found Approve TWAP (Pass Price): $${passTwap}`);
+        passPrice = passTwap;
       }
       
       if (rejectTwapMatch) {
         failTwap = parseFloat(rejectTwapMatch[1]);
-        failPrice = failTwap; // Use TWAP as price
-        console.log(`[Puppeteer] ✓ Found Reject TWAP (Fail Price): $${failTwap}`);
+        failPrice = failTwap;
       }
       
       // First, try to find the threshold near "APPROVED" or "Pass threshold" (this is the actual threshold)
@@ -683,16 +565,12 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
           
           // Prioritize: Look for "approved" + percentage (this is the actual threshold)
           if (context.includes('approved') && value > 0) {
-            console.log(`[Puppeteer] ✅ Found threshold near "APPROVED": ${value}%`);
-            console.log(`[Puppeteer] Context: "${context}"`);
             foundThreshold = value;
-            break; // This is the one we want
+            break;
           }
           
           // Also check for "pass threshold" context
           if (context.includes('pass threshold') && value > 0) {
-            console.log(`[Puppeteer] ✅ Found threshold near "Pass threshold": ${value}%`);
-            console.log(`[Puppeteer] Context: "${context}"`);
             foundThreshold = value;
             break;
           }
@@ -702,13 +580,11 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
       // If we have prices, verify threshold calculation
       if (passPrice !== null && failPrice !== null && failPrice > 0) {
         const calculatedThreshold = ((passPrice - failPrice) / failPrice) * 100;
-        console.log(`[Puppeteer] Calculated threshold from prices: ${calculatedThreshold.toFixed(4)}%`);
         
         // If we found a threshold, verify it matches (within 0.1%)
         if (foundThreshold !== null) {
           const diff = Math.abs(foundThreshold - calculatedThreshold);
           if (diff > 0.1) {
-            console.log(`[Puppeteer] ⚠️  Threshold mismatch: found ${foundThreshold}% vs calculated ${calculatedThreshold.toFixed(4)}%`);
             // Use the calculated one as it's more accurate
             foundThreshold = calculatedThreshold;
           }
@@ -744,8 +620,6 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
           ).toLowerCase();
           
           if (context.includes('threshold') || (context.includes('pass') && !context.includes('fail'))) {
-            console.log(`[Puppeteer] ✅ Found threshold in page text: ${value}%`);
-            console.log(`[Puppeteer] Context: "${context}"`);
             return {
               proposalPubkey: config.proposal.pubkey,
               passPrice: 0,
@@ -760,31 +634,17 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
         }
       }
       
-      console.log(`[Puppeteer] ❌ Could not extract threshold from page`);
       return null;
       
     } finally {
       try {
         if (browser) {
           await browser.close();
-          console.log(`[Puppeteer] Browser closed`);
         }
       } catch (closeError) {
-        console.log(`[Puppeteer] ⚠️  Error closing browser:`, closeError);
       }
     }
   } catch (error) {
-    console.log(`[Puppeteer] ❌ Fatal error:`, error);
-    if (error instanceof Error) {
-      console.log(`[Puppeteer] Error message: ${error.message}`);
-      console.log(`[Puppeteer] Error stack: ${error.stack?.substring(0, 500)}`);
-      
-      // Check for specific error types
-      if (error.message.includes('ECONNRESET') || error.message.includes('Target closed')) {
-        console.log(`[Puppeteer] 💡 Connection reset - this might be a Chrome/Puppeteer issue`);
-        console.log(`[Puppeteer] 💡 Try: npm install puppeteer@latest or use a different approach`);
-      }
-    }
     return null;
   }
 }
@@ -793,10 +653,7 @@ async function fetchFromWebpageWithPuppeteer(): Promise<ProposalData | null> {
 async function fetchFromWebpage(): Promise<ProposalData | null> {
   try {
     const url = `https://www.metadao.fi/projects/${config.proposal.projectSlug}/proposal/${config.proposal.pubkey}`;
-    console.log(`\n[Webpage Scraping] Fetching: ${url}`);
-    
-    // Add a longer delay to avoid rate limiting
-    console.log(`[Webpage Scraping] Waiting 2 seconds to avoid rate limiting...`);
+    // Add a delay to avoid rate limiting
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     const response = await fetch(url, {
@@ -814,23 +671,17 @@ async function fetchFromWebpage(): Promise<ProposalData | null> {
       },
     });
 
-    console.log(`[Webpage Scraping] Response status: ${response.status} ${response.statusText}`);
-    console.log(`[Webpage Scraping] Response headers:`, Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       if (response.status === 429) {
         const retryAfter = response.headers.get('retry-after');
-        console.log(`[Webpage Scraping] ❌ Rate limited (429). Retry after: ${retryAfter || 'unknown'}`);
-        console.log(`[Webpage Scraping] 💡 Suggestion: Need to use browser automation (Selenium/Puppeteer) or wait longer`);
       } else {
-        console.log(`[Webpage Scraping] ❌ HTTP error: ${response.status} ${response.statusText}`);
       }
       
       // Try to read error body for more info
       try {
         const errorText = await response.text();
         if (errorText) {
-          console.log(`[Webpage Scraping] Error body (first 500 chars):`, errorText.substring(0, 500));
         }
       } catch (e) {
         // Ignore error reading body
@@ -840,49 +691,35 @@ async function fetchFromWebpage(): Promise<ProposalData | null> {
     }
 
     const html = await response.text();
-    console.log(`[Webpage Scraping] ✓ Received HTML (${html.length} bytes)`);
-    
-    if (html.length < 1000) {
-      console.log(`[Webpage Scraping] ⚠️  HTML seems too short, might be an error page`);
-      console.log(`[Webpage Scraping] HTML content:`, html.substring(0, 500));
-    }
     
     let threshold: number | null = null;
     let passPrice: number | null = null;
     let failPrice: number | null = null;
 
     // Try to find data in Next.js __NEXT_DATA__ script tag
-    console.log(`[Webpage Scraping] Looking for __NEXT_DATA__ script tag...`);
     const nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
     if (nextDataMatch) {
-      console.log(`[Webpage Scraping] ✓ Found __NEXT_DATA__ (${nextDataMatch[1].length} bytes)`);
       try {
         const nextData = JSON.parse(nextDataMatch[1]);
-        console.log(`[Webpage Scraping] ✓ Parsed __NEXT_DATA__ JSON`);
         
         // Navigate through Next.js data structure to find proposal data
-        const findInObject = (obj: any, key: string, path: string = ''): any => {
+        const findInObject = (obj: any, key: string): any => {
           if (obj && typeof obj === 'object') {
             if (key in obj) {
-              console.log(`[Webpage Scraping] Found '${key}' at path: ${path}.${key}`);
               return obj[key];
             }
             for (const k in obj) {
-              const found = findInObject(obj[k], key, path ? `${path}.${k}` : k);
+              const found = findInObject(obj[k], key);
               if (found !== undefined) return found;
             }
           }
           return undefined;
         };
-
-        // Look for threshold, pass_price, fail_price in the data
-        console.log(`[Webpage Scraping] Searching for proposal data in __NEXT_DATA__...`);
         const proposalData = findInObject(nextData, 'proposal') || 
                             findInObject(nextData, 'proposalData') ||
                             findInObject(nextData, 'pageProps');
         
         if (proposalData) {
-          console.log(`[Webpage Scraping] ✓ Found proposal data structure`);
           if (typeof proposalData === 'object') {
             threshold = proposalData.threshold ?? proposalData.threshold_percent ?? null;
             passPrice = proposalData.pass_price ?? proposalData.passPrice ?? null;
@@ -985,11 +822,6 @@ async function fetchFromWebpage(): Promise<ProposalData | null> {
       };
     }
 
-    console.log(`[Webpage Scraping] ❌ Could not extract threshold from webpage`);
-    console.log(`[Webpage Scraping] 💡 Possible reasons:`);
-    console.log(`   - Page requires JavaScript to load data (need Selenium/Puppeteer)`);
-    console.log(`   - Data is loaded via API calls after page load`);
-    console.log(`   - Rate limiting is blocking the request`);
     console.log(`   - HTML structure changed`);
     return null;
   } catch (error) {
@@ -1040,7 +872,6 @@ async function fetchFromMarketApi(): Promise<ProposalData | null> {
 }
 
 export async function fetchProposalData(): Promise<ProposalData | null> {
-  console.log(`\n--- Fetching proposal data for: ${config.proposal.pubkey} ---`);
 
   // Check if we're in Cloudflare Workers (Puppeteer won't work)
   const isWorkers = typeof navigator !== 'undefined' && navigator.userAgent?.includes('Cloudflare-Workers') ||
@@ -1049,7 +880,6 @@ export async function fetchProposalData(): Promise<ProposalData | null> {
   // Try GraphQL first (most reliable if available)
   let data = await fetchFromGraphQL();
   if (data) {
-    console.log("✓ Fetched from GraphQL API");
     return data;
   }
 
@@ -1057,7 +887,6 @@ export async function fetchProposalData(): Promise<ProposalData | null> {
   if (!isWorkers) {
     data = await fetchFromWebpageWithPuppeteer();
     if (data) {
-      console.log("✓ Fetched from webpage using Puppeteer");
       return data;
     }
   }
@@ -1066,14 +895,12 @@ export async function fetchProposalData(): Promise<ProposalData | null> {
   // Try simple webpage scraping (fallback when APIs are rate-limited)
   data = await fetchFromWebpage();
   if (data) {
-    console.log("✓ Fetched from webpage");
     return data;
   }
 
   // Try Solana RPC for on-chain data
   data = await fetchFromSolanaRpc();
   if (data) {
-    console.log("✓ Fetched from Solana RPC");
     return data;
   }
 
