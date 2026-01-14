@@ -155,6 +155,13 @@ export function formatReport(report: ThresholdReport): string {
   // Pass/Fail prices
   lines.push(`*Pass Price:* $${report.passPrice.toFixed(6)}`);
   lines.push(`*Fail Price:* $${report.failPrice.toFixed(6)}`);
+  
+  // Calculate and display price difference percentage
+  if (report.passPrice > 0 && report.failPrice > 0) {
+    const priceDiffPercent = ((report.passPrice - report.failPrice) / report.failPrice) * 100;
+    const priceDiffSign = priceDiffPercent >= 0 ? "+" : "";
+    lines.push(`*Price Difference:* ${priceDiffSign}${priceDiffPercent.toFixed(4)}%`);
+  }
 
   lines.push("");
 

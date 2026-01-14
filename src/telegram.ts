@@ -49,11 +49,20 @@ export function initializeBot(): TelegramBot {
 export async function sendThresholdUpdate(
   chatId?: string
 ): Promise<boolean> {
+  // If chatId is provided (e.g., from /status command), use it
+  // Otherwise, use the configured chat ID from config (for scheduled updates)
   const targetChatId = chatId || config.telegram.chatId;
 
   if (!targetChatId) {
     console.error("No chat ID configured");
     return false;
+  }
+
+  // Log where the message is being sent
+  if (chatId) {
+    console.log(`Sending update to user chat: ${chatId} (command response)`);
+  } else {
+    console.log(`Sending update to configured chat: ${config.telegram.chatId} (scheduled update)`);
   }
 
   if (!bot) {
