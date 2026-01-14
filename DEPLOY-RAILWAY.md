@@ -30,23 +30,40 @@ git push -u origin main
 4. Choose your repository
 5. Railway will automatically detect it's a Node.js project
 
-### 3. Configure Environment Variables
+### 3. Configure Environment Variables ⚠️ CRITICAL
+
+**This is the most important step!** The bot will crash without these variables.
 
 In your Railway project:
 
-1. Go to your service → **Variables** tab
-2. Add these environment variables:
+1. Click on your service
+2. Go to the **Variables** tab (or **Settings** → **Variables**)
+3. Click **"New Variable"** or **"Raw Editor"**
+4. Add these environment variables (one per line in Raw Editor, or use the form):
 
+**Required:**
 ```
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_CHAT_ID=your_chat_id_here
 ```
 
-Optional (has defaults):
+**Optional (has defaults):**
 ```
 PROPOSAL_PUBKEY=6cdhy4j6CAAJjE1z2iQDsFda2BrqJkhtHrRWT9QasSoa
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 ```
+
+**Important Notes:**
+- ✅ No quotes needed around values
+- ✅ No spaces around the `=` sign
+- ✅ Railway will automatically redeploy after adding variables
+- ✅ Variables are case-sensitive
+
+**Troubleshooting:**
+- If you see "TELEGRAM_BOT_TOKEN is required" error, the variables aren't set correctly
+- Double-check spelling (no typos)
+- Make sure you're adding them to the correct service
+- After adding, Railway should auto-redeploy
 
 ### 4. Configure Build Settings
 
@@ -85,11 +102,39 @@ The bot will show in logs:
 
 ## Troubleshooting
 
+### "TELEGRAM_BOT_TOKEN is required" Error
+
+If you see this error even though variables are set:
+
+1. **Check Variable Location:**
+   - Variables must be set at the **Service level**, not just Project level
+   - Go to your service → Variables tab
+   - Make sure variables are listed there
+
+2. **Verify Variable Names:**
+   - Must be exactly: `TELEGRAM_BOT_TOKEN` (case-sensitive)
+   - Must be exactly: `TELEGRAM_CHAT_ID` (case-sensitive)
+   - No extra spaces or quotes
+
+3. **Check Railway Logs:**
+   - After the next deploy, check logs
+   - You should see: "Environment variables check:" with ✓ or ✗
+   - This will show which variables are missing
+
+4. **Redeploy After Adding Variables:**
+   - Railway should auto-redeploy, but you can manually trigger:
+   - Go to Deployments → Click "Redeploy"
+
+5. **Common Issues:**
+   - Variables set at Project level instead of Service level
+   - Typos in variable names (check for extra spaces)
+   - Variables not saved (make sure to click Save)
+
 ### Bot Not Starting
 
 1. Check logs for errors
 2. Verify environment variables are set correctly
-3. Make sure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set
+3. Make sure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set at **Service level**
 
 ### Puppeteer Issues
 
