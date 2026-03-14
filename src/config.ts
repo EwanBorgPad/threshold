@@ -20,8 +20,8 @@ export const config = {
   proposal: {
     pubkey:
       process.env.PROPOSAL_PUBKEY ||
-      "6cdhy4j6CAAJjE1z2iQDsFda2BrqJkhtHrRWT9QasSoa",
-    projectSlug: "ranger",
+      "8WcHZ6U5PPa98xwXwKJxNKAhgKNdYMrwoUSpEyMdSww9",
+    projectSlug: process.env.PROJECT_SLUG || "omnipair",
   },
   metadaoApi: {
     baseUrl: "https://market-api.metadao.fi",

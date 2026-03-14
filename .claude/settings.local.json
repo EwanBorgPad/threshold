@@ -15,7 +15,9 @@
       "Bash(curl:*)",
       "Bash(python3:*)",
       "WebFetch(domain:solscan.io)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Read(//private/tmp/**)",
+      "Bash(gh api:*)"
     ]
   }
 }
